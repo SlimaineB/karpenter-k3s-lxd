@@ -93,3 +93,49 @@ docker save karpenter-kwok:latest > /tmp/karpenter-kwok.tar
 ctr -n k8s.io image import /tmp/karpenter-kwok.tar
 kubectl -n karpenter delete pod -l app.kubernetes.io/instance=karpenter --force --grace-period=0
 ```
+
+## 8. ImagePullBackOff — image importée dans le mauvais containerd
+
+**Erreur** : `ImagePullBackOff` / `ErrImagePull` après `helm install`.
+
+**Cause** : k3s a son propre containerd (`/run/k3s/containerd/containerd.sock`). `ctr -n k8s.io image import` sans `CONTAINERD_ADDRESS` importe dans le containerd host, invisible pour k3s.
+
+**Solution** :
+```bash
+CONTAINERD_ADDRESS=/run/k3s/containerd/containerd.sock ctr -n k8s.io image import /tmp/k3s-lxd-provider.tar
+```
+
+**Vérification** :
+```bash
+CONTAINERD_ADDRESS=/run/k3s/containerd/containerd.sock ctr -n k8s.io image ls | grep k3s-lxd
+```
+
+## 9. CRD Karpenter manquant — "no matches for kind"
+
+**Erreur** : Les logs du provider montrent :
+```
+"error":"no matches for kind \"NodePool\" in version \"karpenter.sh/v1\""
+"error":"no matches for kind \"NodeClaim\" in version \"karpenter.sh/v1\""
+```
+
+**Cause** : Les CRDs `NodePool` et `NodeClaim` ne sont pas installés sur le cluster.
+
+**Solution** :
+```bash
+kubectl apply -f /tmp/karpenter/pkg/apis/crds/
+```
+
+## 10. LXDNodeClass invalide — "spec.defaultCPU in body must be of type string"
+
+**Erreur** :
+```
+The LXDNodeClass "default" is invalid: spec.defaultCPU: Invalid value: "integer": spec.defaultCPU in body must be of type string
+```
+
+**Cause** : Le champ `defaultCPU` est défini comme `string` dans le CRD. En YAML, `defaultCPU: 1` est un entier.
+
+**Solution** : Toujours mettre la valeur entre guillemets :
+```yaml
+spec:
+  defaultCPU: "1"   # string, pas un entier
+```

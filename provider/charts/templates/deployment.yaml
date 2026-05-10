@@ -6,7 +6,7 @@ metadata:
   labels:
     {{- include "k3s-lxd-provider.labels" . | nindent 4 }}
 spec:
-  replicas: 1
+  replicas: {{ .Values.replicas }}
   selector:
     matchLabels:
       {{- include "k3s-lxd-provider.selectorLabels" . | nindent 6 }}
@@ -17,13 +17,27 @@ spec:
     spec:
       serviceAccountName: {{ include "k3s-lxd-provider.fullname" . }}
       nodeSelector:
-        kubernetes.io/hostname: sliman-system-product-name
+        {{- toYaml .Values.nodeSelector | nindent 8 }}
       tolerations:
         - operator: Exists
       containers:
         - name: controller
           image: "{{ .Values.controller.image.repository }}:{{ .Values.controller.image.tag }}"
           imagePullPolicy: {{ .Values.controller.image.pullPolicy }}
+          resources:
+            {{- toYaml .Values.controller.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.controller.healthProbePort | default 8081 }}
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: {{ .Values.controller.healthProbePort | default 8081 }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
           env:
             - name: K3S_SERVER_URL
               value: {{ .Values.k3s.serverURL | quote }}
@@ -39,9 +53,9 @@ spec:
                 fieldRef:
                   fieldPath: metadata.namespace
             - name: METRICS_PORT
-              value: "8080"
+              value: {{ .Values.controller.metricsPort | default "8080" | quote }}
             - name: HEALTH_PROBE_PORT
-              value: "8081"
+              value: {{ .Values.controller.healthProbePort | default "8081" | quote }}
             - name: DISABLE_LEADER_ELECTION
               value: "true"
             - name: FEATURE_GATES

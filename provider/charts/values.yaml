@@ -1,8 +1,22 @@
+replicas: 1
+
 controller:
   image:
     repository: k3s-lxd-provider
     tag: latest
     pullPolicy: IfNotPresent
+  metricsPort: 8080
+  healthProbePort: 8081
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+nodeSelector:
+  kubernetes.io/hostname: sliman-system-product-name
 
 k3s:
   serverURL: "https://192.168.1.59:6443"

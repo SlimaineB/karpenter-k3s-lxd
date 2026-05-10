@@ -51,15 +51,60 @@ docker build -t k3s-lxd-provider:latest .
 ## Deploying
 
 ```bash
+# 1. Import image into k3s containerd (NOT host containerd)
 docker save k3s-lxd-provider:latest -o /tmp/k3s-lxd-provider.tar
-ctr -n k8s.io image import /tmp/k3s-lxd-provider.tar
+CONTAINERD_ADDRESS=/run/k3s/containerd/containerd.sock \
+  ctr -n k8s.io image import /tmp/k3s-lxd-provider.tar
+
+# 2. Install Karpenter CRDs (NodePool, NodeClaim)
+kubectl apply -f /tmp/karpenter/pkg/apis/crds/
+
+# 3. Install provider CRD
+kubectl apply -f apis/crds/
+
+# 4. Deploy the provider
 helm upgrade --install k3s-lxd-provider charts/ \
-  --namespace karpenter \
-  --set controller.image.repository=docker.io/library/k3s-lxd-provider \
-  --set controller.image.tag=latest \
+  --namespace karpenter --create-namespace \
   --set k3s.serverURL=https://<server>:6443 \
   --set k3s.token=<node-token>
+
+# 5. Create LXDNodeClass and NodePool
+kubectl apply -f - <<'EOF'
+apiVersion: karpenter.k3s.sh/v1alpha1
+kind: LXDNodeClass
+metadata:
+  name: default
+spec:
+  image: "ubuntu:24.04"
+  defaultCPU: "1"          # must be a string
+  defaultMemory: 2Gi
+  nodeRegistrationDelay: 5s
+---
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: lxd
+spec:
+  template:
+    spec:
+      nodeClassRef:
+        group: karpenter.k3s.sh
+        kind: LXDNodeClass
+        name: default
+      requirements:
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: [spot]
+  limits:
+    cpu: 100
+    memory: 100Gi
+  disruption:
+    consolidationPolicy: WhenEmptyOrUnderutilized
+    consolidateAfter: 30s
+EOF
 ```
+
+> **Note** : k3s a son propre containerd. Si vous utilisez `ctr` sans `CONTAINERD_ADDRESS`, l'image est importée dans le containerd host, pas dans celui de k3s → `ImagePullBackOff`.
 
 ## Configuration
 
@@ -68,7 +113,7 @@ The `LXDNodeClass` CRD configures:
 | Field | Default | Description |
 |-------|---------|-------------|
 | `image` | `ubuntu:24.04` | LXD image alias |
-| `defaultCPU` | `2` | CPU limit per container |
+| `defaultCPU` | `"2"` | CPU limit per container (string, must be quoted in YAML) |
 | `defaultMemory` | `4Gi` | Memory limit (Kubernetes format, auto-converted to MiB for LXD) |
 | `nodeRegistrationDelay` | `5s` | Delay before k3s-agent install |
 

@@ -1,0 +1,6 @@
+apiVersion: v2
+name: k3s-lxd-provider
+description: A Helm chart for Karpenter's k3s LXD Provider
+type: application
+version: 0.1.0
+appVersion: 0.1.0

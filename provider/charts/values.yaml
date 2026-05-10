@@ -1,0 +1,17 @@
+controller:
+  image:
+    repository: k3s-lxd-provider
+    tag: latest
+    pullPolicy: IfNotPresent
+
+k3s:
+  serverURL: "https://192.168.1.59:6443"
+  token: ""
+
+lxd:
+  socketPath: /var/snap/lxd/common/lxd/unix.socket
+
+settings:
+  clusterName: "k3s-lxd"
+  featureGates:
+    staticCapacity: false

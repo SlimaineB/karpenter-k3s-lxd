@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "k3s-lxd-provider.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "k3s-lxd-provider.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "k3s-lxd-provider.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "k3s-lxd-provider.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "k3s-lxd-provider.fullname" . }}
+      nodeSelector:
+        kubernetes.io/hostname: sliman-system-product-name
+      tolerations:
+        - operator: Exists
+      containers:
+        - name: controller
+          image: "{{ .Values.controller.image.repository }}:{{ .Values.controller.image.tag }}"
+          imagePullPolicy: {{ .Values.controller.image.pullPolicy }}
+          env:
+            - name: K3S_SERVER_URL
+              value: {{ .Values.k3s.serverURL | quote }}
+            - name: K3S_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "k3s-lxd-provider.fullname" . }}-token
+                  key: token
+            - name: LXD_SOCKET
+              value: {{ .Values.lxd.socketPath | quote }}
+            - name: SYSTEM_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: METRICS_PORT
+              value: "8080"
+            - name: HEALTH_PROBE_PORT
+              value: "8081"
+            - name: DISABLE_LEADER_ELECTION
+              value: "true"
+            - name: FEATURE_GATES
+              value: "StaticCapacity={{ .Values.settings.featureGates.staticCapacity }}"
+          volumeMounts:
+            - name: lxd-socket
+              mountPath: {{ .Values.lxd.socketPath }}
+              readOnly: true
+          securityContext:
+            privileged: true
+            runAsUser: 0
+      volumes:
+        - name: lxd-socket
+          hostPath:
+            path: {{ .Values.lxd.socketPath }}
+            type: Socket
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "k3s-lxd-provider.fullname" . }}-token
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "k3s-lxd-provider.labels" . | nindent 4 }}
+stringData:
+  token: {{ .Values.k3s.token | quote }}

@@ -1,0 +1,74 @@
+[
+  {
+    "name": "c-1x-amd64-linux",
+    "offerings": [
+      {
+        "price": 0.019,
+        "available": true,
+        "requirements": [
+          {"key": "karpenter.sh/capacity-type", "operator": "In", "values": ["spot"]},
+          {"key": "topology.kubernetes.io/zone", "operator": "In", "values": ["lxd-local"]}
+        ]
+      },
+      {
+        "price": 0.038,
+        "available": true,
+        "requirements": [
+          {"key": "karpenter.sh/capacity-type", "operator": "In", "values": ["on-demand"]},
+          {"key": "topology.kubernetes.io/zone", "operator": "In", "values": ["lxd-local"]}
+        ]
+      }
+    ],
+    "architecture": "amd64",
+    "operatingSystems": ["linux"],
+    "resources": {"cpu": "1", "memory": "2Gi", "ephemeral-storage": "20Gi"}
+  },
+  {
+    "name": "c-2x-amd64-linux",
+    "offerings": [
+      {
+        "price": 0.038,
+        "available": true,
+        "requirements": [
+          {"key": "karpenter.sh/capacity-type", "operator": "In", "values": ["spot"]},
+          {"key": "topology.kubernetes.io/zone", "operator": "In", "values": ["lxd-local"]}
+        ]
+      },
+      {
+        "price": 0.076,
+        "available": true,
+        "requirements": [
+          {"key": "karpenter.sh/capacity-type", "operator": "In", "values": ["on-demand"]},
+          {"key": "topology.kubernetes.io/zone", "operator": "In", "values": ["lxd-local"]}
+        ]
+      }
+    ],
+    "architecture": "amd64",
+    "operatingSystems": ["linux"],
+    "resources": {"cpu": "2", "memory": "4Gi", "ephemeral-storage": "20Gi"}
+  },
+  {
+    "name": "c-4x-amd64-linux",
+    "offerings": [
+      {
+        "price": 0.076,
+        "available": true,
+        "requirements": [
+          {"key": "karpenter.sh/capacity-type", "operator": "In", "values": ["spot"]},
+          {"key": "topology.kubernetes.io/zone", "operator": "In", "values": ["lxd-local"]}
+        ]
+      },
+      {
+        "price": 0.152,
+        "available": true,
+        "requirements": [
+          {"key": "karpenter.sh/capacity-type", "operator": "In", "values": ["on-demand"]},
+          {"key": "topology.kubernetes.io/zone", "operator": "In", "values": ["lxd-local"]}
+        ]
+      }
+    ],
+    "architecture": "amd64",
+    "operatingSystems": ["linux"],
+    "resources": {"cpu": "4", "memory": "8Gi", "ephemeral-storage": "20Gi"}
+  }
+]

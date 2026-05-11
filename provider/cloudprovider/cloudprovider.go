@@ -24,6 +24,8 @@ import (
 	"sigs.k8s.io/karpenter/pkg/scheduling"
 )
 
+const bootstrapTimeout = 5 * time.Minute
+
 func NewCloudProvider(ctx context.Context, kubeClient client.Client, instanceTypes []*cloudprovider.InstanceType, lxd *lxdclient.Client, k3sServerURL, k3sToken string) *CloudProvider {
 	return &CloudProvider{
 		kubeClient:    kubeClient,
@@ -96,15 +98,7 @@ func (c *CloudProvider) Create(ctx context.Context, nodeClaim *v1.NodeClaim) (*v
 		registrationDelay = 5 * time.Second
 	}
 
-	go func() {
-		time.Sleep(registrationDelay)
-
-		if err := retry.OnError(retry.DefaultBackoff, func(err error) bool { return true }, func() error {
-			return c.bootstrapContainer(context.Background(), containerName, providerID)
-		}); err != nil {
-			log.FromContext(ctx).Error(err, "failed bootstrapping container", "container", containerName)
-		}
-	}()
+	go c.bootstrapContainerAsync(ctx, containerName, providerID, registrationDelay)
 
 	nc, err := c.toNodeClaim(containerName, providerID, instanceType)
 	if err != nil {
@@ -121,6 +115,21 @@ func (c *CloudProvider) Create(ctx context.Context, nodeClaim *v1.NodeClaim) (*v
 	return nc, nil
 }
 
+func (c *CloudProvider) bootstrapContainerAsync(parentCtx context.Context, containerName, providerID string, delay time.Duration) {
+	logger := log.FromContext(parentCtx).WithValues("container", containerName)
+
+	bootstrapCtx, cancel := context.WithTimeout(context.Background(), bootstrapTimeout)
+	defer cancel()
+
+	time.Sleep(delay)
+
+	if err := retry.OnError(retry.DefaultBackoff, func(err error) bool { return true }, func() error {
+		return c.bootstrapContainer(bootstrapCtx, containerName, providerID)
+	}); err != nil {
+		logger.Error(err, "failed bootstrapping container")
+	}
+}
+
 func (c *CloudProvider) bootstrapContainer(ctx context.Context, containerName, providerID string) error {
 	steps := []struct {
 		name string
@@ -134,7 +143,7 @@ kubelet-arg:
 snapshotter: native
 K3SEOF`, providerID)},
 		{"install k3s-agent", fmt.Sprintf(
-			"curl -sfL https://get.k3s.io | K3S_URL=%s K3S_TOKEN=%s sh -",
+			"curl -sfL --connect-timeout 30 --max-time 120 https://get.k3s.io | K3S_URL=%s K3S_TOKEN=%s sh -",
 			c.k3sServerURL, c.k3sToken)},
 		{"write systemd override", `cat > /etc/systemd/system/k3s-agent.service.d/override.conf << 'OVERRIDE'
 [Service]

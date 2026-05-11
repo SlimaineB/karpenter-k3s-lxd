@@ -2,6 +2,12 @@
 
 Custom Karpenter cloud provider that provisions real LXD containers as k3s worker nodes.
 
+## Requirements
+
+- LXD (snap) with `lxdbr0` bridge
+- iptables rules for LXD bridge NAT (auto-configured by the provider on startup)
+- `net.ipv4.ip_forward = 1` (also auto-configured)
+
 ## Architecture
 
 ```
@@ -25,7 +31,7 @@ Pending Pod → Karpenter → cloudprovider.Create()
 | `controllers/nodeclass/` | Controller that sets `Ready` condition on `LXDNodeClass` |
 | `lxd/` | LXD REST API client over Unix socket |
 | `charts/` | Helm chart (deployment, RBAC, service account) |
-| `main.go` | Entry point — wires operator, controllers, cloud provider |
+| `main.go` | Entry point — wires operator, controllers, cloud provider, iptables setup |
 
 ## How it works
 
@@ -48,6 +54,8 @@ CGO_ENABLED=0 go build -o k3s-lxd-provider .
 docker build -t k3s-lxd-provider:latest .
 ```
 
+> **Note**: Requires the Karpenter source at `/tmp/karpenter` (set in `go.mod` replace directive). Build and test with Go 1.22+.
+
 ## Deploying
 
 ```bash
@@ -62,11 +70,11 @@ kubectl apply -f /tmp/karpenter/pkg/apis/crds/
 # 3. Install provider CRD
 kubectl apply -f apis/crds/
 
-# 4. Deploy the provider
+# 4. Deploy the provider (iptables init container runs automatically)
 helm upgrade --install k3s-lxd-provider charts/ \
   --namespace karpenter --create-namespace \
   --set k3s.serverURL=https://<server>:6443 \
-  --set k3s.token=<node-token>
+  --set k3s.token=$(cat /var/lib/rancher/k3s/server/node-token)
 
 # 5. Create LXDNodeClass and NodePool
 kubectl apply -f - <<'EOF'
@@ -76,7 +84,7 @@ metadata:
   name: default
 spec:
   image: "ubuntu:24.04"
-  defaultCPU: "1"          # must be a string
+  defaultCPU: "1"
   defaultMemory: 2Gi
   nodeRegistrationDelay: 5s
 ---
@@ -104,8 +112,6 @@ spec:
 EOF
 ```
 
-> **Note** : k3s a son propre containerd. Si vous utilisez `ctr` sans `CONTAINERD_ADDRESS`, l'image est importée dans le containerd host, pas dans celui de k3s → `ImagePullBackOff`.
-
 ## Configuration
 
 The `LXDNodeClass` CRD configures:
@@ -119,9 +125,23 @@ The `LXDNodeClass` CRD configures:
 
 The `NodePool` selects the `LXDNodeClass` and defines requirements (arch, os, capacity-type, etc.).
 
+## Network requirements
+
+The LXD bridge (`lxdbr0`) needs NAT/masquerade for internet access from containers. The provider:
+
+1. **Init container** (`iptables-setup`): runs at pod startup with `hostNetwork: true` and configures:
+   - `iptables -I FORWARD -i lxdbr0 -j ACCEPT`
+   - `iptables -I FORWARD -o lxdbr0 -j ACCEPT`  
+   - `iptables -t nat -A POSTROUTING -s 10.103.76.0/24 ! -o lxdbr0 -j MASQUERADE`
+   - `net.ipv4.ip_forward = 1`
+2. **main.go**: re-applies rules on provider restart (in case kube-router/flannel reset them)
+
+Without these rules, LXD containers cannot reach the internet and k3s-agent install will fail.
+
 ## Key Decisions
 
 - Uses LXD Unix socket API directly (`/var/snap/lxd/common/lxd/unix.socket`), no `lxc` binary in container
 - Privileged container + `security.nesting=true` for k3s (Flannel VXLAN)
-- Asynchronous bootstrap: `Create()` returns immediately, k3s-agent installs in goroutine
+- Asynchronous bootstrap: `Create()` returns immediately, k3s-agent installs in goroutine with 5min timeout
 - Provider ID format: `k3s-lxd://<container-name>`
+- Exec commands check exit codes via LXD operation metadata (no more silent failures)
